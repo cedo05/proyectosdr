@@ -34,10 +34,14 @@ from optparse import OptionParser
 import sys
 import threading
 import time
+import os
+import shutil
 from gnuradio import qtgui
 import mysql.connector
 from mysql.connector import Error
 from datetime import date, datetime
+import pyaudio
+import wave
 
 def insert_onState(id_equipo, fecha_encendido, hora_encendido):
     try:
@@ -113,6 +117,8 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
             self.start()
             self.buttonStart.setEnabled(False)
             self.buttonStop.setEnabled(True)
+            self.buttonRecord.setEnabled(False)
+            self.buttonDefault.setEnabled(False)
             insert_onState(self.id_equipo, date.today(), datetime.now().time())
         
         def on_click_stop():
@@ -120,14 +126,70 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
             self.wait()
             self.buttonStart.setEnabled(True)
             self.buttonStop.setEnabled(False)
+            self.buttonRecord.setEnabled(True)
+            self.buttonDefault.setEnabled(True)
             insert_offState(self.id_equipo, date.today(), datetime.now().time())
 
-        self.buttonStart = QPushButton('Start', self)
+        def defaultAudio():
+            try:
+                shutil.copyfile('base.wav', 'audio.wav')
+                print 'Archivo copiado'
+            except IOError as e:
+                print 'No se pudo copiar'
+
+        def audioRecord():
+            chunk = 1024  # Record in chunks of 1024 samples
+            sample_format = pyaudio.paInt16  # 16 bits per sample
+            channels = 2
+            fs = 44100  # Record at 44100 samples per second
+            seconds = self.time_rec
+            filename = "audio.wav"
+
+            p = pyaudio.PyAudio()  # Create an interface to PortAudio
+
+            print('Recording')
+
+            stream = p.open(format=sample_format,
+                            channels=channels,
+                            rate=fs,
+                            frames_per_buffer=chunk,
+                            input=True)
+
+            frames = []  # Initialize array to store frames
+
+            # Store data in chunks for 3 seconds
+            for i in range(0, int(fs / chunk * seconds)):
+                data = stream.read(chunk)
+                frames.append(data)
+
+            # Stop and close the stream 
+            stream.stop_stream()
+            stream.close()
+            # Terminate the PortAudio interface
+            p.terminate()
+
+            print('Finished recording')
+
+            # Save the recorded data as a WAV file
+            wf = wave.open(filename, 'wb')
+            wf.setnchannels(channels)
+            wf.setsampwidth(p.get_sample_size(sample_format))
+            wf.setframerate(fs)
+            wf.writeframes(b''.join(frames))
+            wf.close()
+
+        self.buttonStart = QPushButton('Iniciar', self)
         self.buttonStart.clicked.connect(on_click_start)
-        self.buttonStop = QPushButton('Stop', self)
+        self.buttonStop = QPushButton('Detener', self)
         self.buttonStop.move(100, 0)
         self.buttonStop.setEnabled(False)
         self.buttonStop.clicked.connect(on_click_stop)
+        self.buttonRecord = QPushButton('Grabar', self)
+        self.buttonRecord.move(0,50)
+        self.buttonRecord.clicked.connect(audioRecord)
+        self.buttonDefault = QPushButton('Por Defecto', self)
+        self.buttonDefault.move(100,50)
+        self.buttonDefault.clicked.connect(defaultAudio)
 
         self.settings = Qt.QSettings("GNU Radio", "FM_Transmitter_V3")
 
@@ -143,6 +205,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate = 250e3
         self.Freq = Freq = 88.5e6
         self.id_equipo = 1
+        self.time_rec = 1
 
         ##################################################
         # Blocks
@@ -183,7 +246,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         )
         self.low_pass_filter_0 = filter.fir_filter_fff(1, firdes.low_pass(
         	1, 54e3, 15e3, 1e3, firdes.WIN_HAMMING, 6.76))
-        self.blocks_wavfile_source_0 = blocks.wavfile_source('/home/proyectosdr/Desktop/Proyecto/audio.wav', True)
+        self.blocks_wavfile_source_0 = blocks.wavfile_source('/home/proyectosdr/proyectosdr/audio.wav', True)
         self.blocks_throttle_0 = blocks.throttle(gr.sizeof_float*1, samp_rate,True)
         self.blocks_multiply_xx_3 = blocks.multiply_vcc(1)
         self.blocks_multiply_xx_2 = blocks.multiply_vcc(1)
