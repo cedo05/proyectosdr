@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 ##################################################
 # GNU Radio Python Flow Graph
-# Title: FM_Transmitter_V3
+# Title: Transmisor de emergencia
 # Author: Cesar Diaz & Lisa Garcia
 # Generated: Sat Jun 22 16:10:26 2019
 ##################################################
@@ -42,60 +42,94 @@ from mysql.connector import Error
 from datetime import date, datetime
 import pyaudio
 import wave
+from ftplib import FTP
+import fileinput
 
+# Funcion para insertar tupla al iniciar transmision
 def insert_onState(id_equipo, fecha_encendido, hora_encendido):
     try:
+        #Abriendo conexion con la base de datos
         connection = mysql.connector.connect(host='localhost',
                              database= 'dbproyectosdr',
                              user='root',
                              password='password')
         cursor = connection.cursor(prepared=True)
+
+        #Query para insertar tupla a tabla estado
         sql_insert_query = """ INSERT INTO `estado`
                           (`id_equipo`, `fecha_encendido`, `hora_encendido`) VALUES (%s,%s,%s)"""
         insert_tuple = (id_equipo, fecha_encendido, hora_encendido)
         cursor.execute(sql_insert_query, insert_tuple)
         connection.commit()
-        print ("Record inserted successfully into python_users table")
+        print ("Informacion insertada con exito")
     except mysql.connector.Error as error :
         connection.rollback()
-        print("Failed to insert into MySQL table {}".format(error))
+        print("Error al insertar la informacion: {}".format(error))
     finally:
-        #closing database connection.
+        #Cerrando conexion con la base de datos.
         if(connection.is_connected()):
             cursor.close()
             connection.close()
-            print("MySQL connection is closed")
+            print("Conexion terminada")
 
+# Funcion para insertar tupla al terminar transmision
 def insert_offState(id_equipo, fecha_apagado, hora_apagado):
     try:
+        #Abriendo conexion con la base de datos
         connection = mysql.connector.connect(host='localhost',
                              database= 'dbproyectosdr',
                              user='root',
                              password='password')
         cursor = connection.cursor(prepared=True)
+
+        #Query para insertar tupla a tabla estado
         sql_insert_query = """ UPDATE `estado` SET
                           fecha_apagado = %s, hora_apagado = %s WHERE id_equipo = %s ORDER BY id_estado DESC LIMIT 1"""
         insert_tuple = (fecha_apagado, hora_apagado, id_equipo)
         cursor.execute(sql_insert_query, insert_tuple)
         connection.commit()
-        print ("Record updated successfully into python_users table")
+        print ("Informacion insertada con exito")
     except mysql.connector.Error as error :
         connection.rollback()
-        print("Failed to updated into MySQL table {}".format(error))
+        print("Error al insertar la informacion: {}".format(error))
     finally:
-        #closing database connection.
+        #Cerrando conexion con la base de datos.
         if(connection.is_connected()):
             cursor.close()
             connection.close()
-            print("MySQL connection is closed")
+            print("Conexion terminada")
 
+# Funcion para subir archivos al servidor FTP
+def UploadFTP(host, port, user, password, foldername, filename, newfilename):
+    #Abriendo conexion con el servidor FTP
+    ftp = FTP()
+    ftp.connect(host, port)
+    ftp.login(user, password)
+    
+    # Seleccion de directorio
+    if foldername in ftp.nlst():
+        ftp.cwd('/%s' % foldername)
+    else:
+        ftp.mkd('/%s' % foldername)
+        ftp.cwd('/%s' % foldername)
 
-class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
+    # Subida de archivo   
+    fp = open(filename, 'rb')
+    ftp.storbinary('STOR %s' % os.path.basename(filename), fp)
+    fp.close()
+    
+    # Renombrar archivo
+    ftp.rename(filename, newfilename)
+    # Finalizar sesion
+    ftp.quit()
 
+# Clase del transmisor 
+class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
+    # Funcion para inicializar los bloques del tranmisor.
     def __init__(self):
-        gr.top_block.__init__(self, "FM_Transmitter_V3")
+        gr.top_block.__init__(self, "Transmisor_de_emergencia")
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("FM_Transmitter_V3")
+        self.setWindowTitle("Transmisor_de_emergencia")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -113,6 +147,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)            
 
+        # Funcion para iniciar la transmision
         def on_click_start():
             self.start()
             self.buttonStart.setEnabled(False)
@@ -120,7 +155,8 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
             self.buttonRecord.setEnabled(False)
             self.buttonDefault.setEnabled(False)
             insert_onState(self.id_equipo, date.today(), datetime.now().time())
-        
+
+        # Funcion para detener la transmision
         def on_click_stop():
             self.stop()
             self.wait()
@@ -130,6 +166,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
             self.buttonDefault.setEnabled(True)
             insert_offState(self.id_equipo, date.today(), datetime.now().time())
 
+        # Funcion para seleccionar audio base
         def defaultAudio():
             try:
                 shutil.copyfile('base.wav', 'audio.wav')
@@ -137,15 +174,16 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
             except IOError as e:
                 print 'No se pudo copiar'
 
+        # Funcion para grabar audio
         def audioRecord():
-            chunk = 1024  # Record in chunks of 1024 samples
-            sample_format = pyaudio.paInt16  # 16 bits per sample
+            chunk = 1024  # Grabar en bloques de 1024 muestras
+            sample_format = pyaudio.paInt16  # 16 bits por muestras
             channels = 2
-            fs = 44100  # Record at 44100 samples per second
+            fs = 44100  # Grabar a 44100 muestras por segundo 
             seconds = self.time_rec
             filename = "audio.wav"
 
-            p = pyaudio.PyAudio()  # Create an interface to PortAudio
+            p = pyaudio.PyAudio()  # Creacion de interfaz a PortAudio
 
             print('Recording')
 
@@ -155,22 +193,22 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
                             frames_per_buffer=chunk,
                             input=True)
 
-            frames = []  # Initialize array to store frames
+            frames = []  
 
-            # Store data in chunks for 3 seconds
+            # Guardar datos en trozos de 3 segundos
             for i in range(0, int(fs / chunk * seconds)):
                 data = stream.read(chunk)
                 frames.append(data)
 
-            # Stop and close the stream 
+            # Parar y cerrar flujo de audio
             stream.stop_stream()
             stream.close()
-            # Terminate the PortAudio interface
+            # Terminar la interfaz de PortAudio
             p.terminate()
 
             print('Finished recording')
 
-            # Save the recorded data as a WAV file
+            # Guardar la data como un archivo .wav
             wf = wave.open(filename, 'wb')
             wf.setnchannels(channels)
             wf.setsampwidth(p.get_sample_size(sample_format))
@@ -178,6 +216,10 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
             wf.writeframes(b''.join(frames))
             wf.close()
 
+            # Subir archivo grabado
+            UploadFTP(self.HostFTP, self.PortFTP, self.UserFTP, self.PassFTP, str(self.id_equipo), "audio.wav", '%s_%s_%s_%s.wav' % (self.id_equipo,self.id_ambulancia, date.today(),datetime.now().time()))
+
+        # Inicializacion de los botones en la GUI
         self.buttonStart = QPushButton('Iniciar', self)
         self.buttonStart.clicked.connect(on_click_start)
         self.buttonStop = QPushButton('Detener', self)
@@ -191,7 +233,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.buttonDefault.move(100,50)
         self.buttonDefault.clicked.connect(defaultAudio)
 
-        self.settings = Qt.QSettings("GNU Radio", "FM_Transmitter_V3")
+        self.settings = Qt.QSettings("GNU Radio", "Transmisor_de_emergencia")
 
         if StrictVersion(Qt.qVersion()) < StrictVersion("5.0.0"):
             self.restoreGeometry(self.settings.value("geometry").toByteArray())
@@ -205,12 +247,18 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate = 250e3
         self.Freq = Freq = 88.5e6
         self.id_equipo = 1
-        self.time_rec = 1
+        self.id_ambulancia = 1
+        self.time_rec = 1        
+        self.HostFTP = '127.0.0.1'
+        self.PortFTP = 21
+        self.UserFTP = 'proyectosdr'
+        self.PassFTP = 'proyectosdr'
 
         ##################################################
-        # Blocks
+        # Bloques
         ##################################################
 
+        # Funcion para barrido de frecuencia
         def _variable_function_probe_0_probe():
             while True:
                 val = self.get_Freq()
@@ -222,7 +270,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
                     self.set_variable_function_probe_0(val)
                 except AttributeError:
                     pass
-                time.sleep(1.0 / (1))
+                time.sleep(1)
         _variable_function_probe_0_thread = threading.Thread(target=_variable_function_probe_0_probe)
         _variable_function_probe_0_thread.daemon = True
         _variable_function_probe_0_thread.start()
@@ -268,7 +316,7 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.analog_fm_preemph_0 = analog.fm_preemph(fs=54e3, tau=75e-6, fh=-1.0)
 
         ##################################################
-        # Connections
+        # Conexiones
         ##################################################
         self.connect((self.analog_fm_preemph_0, 0), (self.low_pass_filter_0, 0))
         self.connect((self.analog_sig_source_x_0, 0), (self.blocks_multiply_xx_2, 1))
@@ -290,11 +338,13 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.connect((self.rational_resampler_xxx_0, 0), (self.blocks_multiply_xx_2, 0))
         self.connect((self.rational_resampler_xxx_0, 0), (self.blocks_multiply_xx_3, 0))
 
+    # Funcion para finalizar el programa
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("GNU Radio", "FM_Transmitter_V3")
+        self.settings = Qt.QSettings("GNU Radio", "Transmisor_de_emergencia")
         self.settings.setValue("geometry", self.saveGeometry())
         event.accept()
 
+    # Getters and setters
     def get_variable_function_probe_0(self):
         return self.variable_function_probe_0
 
@@ -319,17 +369,18 @@ class FM_Transmitter_V3(gr.top_block, Qt.QWidget):
         self.Freq = Freq
         self.uhd_usrp_sink_0.set_center_freq(self.Freq, 0)
 
-
-def main(top_block_cls=FM_Transmitter_V3, options=None):
+# Programa principal
+def main(top_block_cls=Transmisor_de_emergencia, options=None):
 
     if StrictVersion("4.5.0") <= StrictVersion(Qt.qVersion()) < StrictVersion("5.0.0"):
         style = gr.prefs().get_string('qtgui', 'style', 'raster')
         Qt.QApplication.setGraphicsSystem(style)
     qapp = Qt.QApplication(sys.argv)
 
+    # Inicializacion del programa
     tb = top_block_cls()
     tb.show()
-
+    # Funcion para detener el programa
     def quitting():
         tb.stop()
         tb.wait()
