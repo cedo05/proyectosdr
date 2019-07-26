@@ -262,6 +262,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
         def _variable_function_probe_0_probe():
             while True:
                 val = self.get_Freq()
+                print val
                 if val == 107500000:
                     self.set_Freq(88500000)
                 else:
@@ -270,10 +271,11 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
                     self.set_variable_function_probe_0(val)
                 except AttributeError:
                     pass
-                time.sleep(1)
+                time.sleep(1.0 / (1))
         _variable_function_probe_0_thread = threading.Thread(target=_variable_function_probe_0_probe)
         _variable_function_probe_0_thread.daemon = True
         _variable_function_probe_0_thread.start()
+
 
         self.uhd_usrp_sink_0 = uhd.usrp_sink(
         	",".join(("", "")),
