@@ -46,7 +46,7 @@ from ftplib import FTP
 import fileinput
 
 # Funcion para insertar tupla al iniciar transmision
-def insert_onState(id_equipo, fecha_encendido, hora_encendido):
+def insert_onState(serial_equipo, fecha_encendido, hora_encendido):
     try:
         #Abriendo conexion con la base de datos
         connection = mysql.connector.connect(host='localhost',
@@ -57,8 +57,8 @@ def insert_onState(id_equipo, fecha_encendido, hora_encendido):
 
         #Query para insertar tupla a tabla estado
         sql_insert_query = """ INSERT INTO `estado`
-                          (`id_equipo`, `fecha_encendido`, `hora_encendido`) VALUES (%s,%s,%s)"""
-        insert_tuple = (id_equipo, fecha_encendido, hora_encendido)
+                          (`id_equipo`, `fecha_encendido`, `hora_encendido`) VALUES ((SELECT id_equipo FROM equipo WHERE numero_serial = %s),%s,%s)"""
+        insert_tuple = (serial_equipo, fecha_encendido, hora_encendido)
         cursor.execute(sql_insert_query, insert_tuple)
         connection.commit()
         print ("Informacion insertada con exito")
@@ -73,7 +73,7 @@ def insert_onState(id_equipo, fecha_encendido, hora_encendido):
             print("Conexion terminada")
 
 # Funcion para insertar tupla al terminar transmision
-def insert_offState(id_equipo, fecha_apagado, hora_apagado):
+def insert_offState(serial_equipo, fecha_apagado, hora_apagado):
     try:
         #Abriendo conexion con la base de datos
         connection = mysql.connector.connect(host='localhost',
@@ -84,8 +84,8 @@ def insert_offState(id_equipo, fecha_apagado, hora_apagado):
 
         #Query para insertar tupla a tabla estado
         sql_insert_query = """ UPDATE `estado` SET
-                          fecha_apagado = %s, hora_apagado = %s WHERE id_equipo = %s ORDER BY id_estado DESC LIMIT 1"""
-        insert_tuple = (fecha_apagado, hora_apagado, id_equipo)
+                          fecha_apagado = %s, hora_apagado = %s WHERE id_equipo = (SELECT id_equipo FROM equipo WHERE numero_serial = %s) ORDER BY id_estado DESC LIMIT 1"""
+        insert_tuple = (fecha_apagado, hora_apagado, serial_equipo)
         cursor.execute(sql_insert_query, insert_tuple)
         connection.commit()
         print ("Informacion insertada con exito")
@@ -154,7 +154,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             self.buttonStop.setEnabled(True)
             self.buttonRecord.setEnabled(False)
             self.buttonDefault.setEnabled(False)
-            insert_onState(self.id_equipo, date.today(), datetime.now().time())
+            insert_onState(self.serial_equipo, date.today(), datetime.now().time())
 
         # Funcion para detener la transmision
         def on_click_stop():
@@ -164,7 +164,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             self.buttonStop.setEnabled(False)
             self.buttonRecord.setEnabled(True)
             self.buttonDefault.setEnabled(True)
-            insert_offState(self.id_equipo, date.today(), datetime.now().time())
+            insert_offState(self.serial_equipo, date.today(), datetime.now().time())
 
         # Funcion para seleccionar audio base
         def defaultAudio():
@@ -217,7 +217,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             wf.close()
 
             # Subir archivo grabado
-            UploadFTP(self.HostFTP, self.PortFTP, self.UserFTP, self.PassFTP, str(self.id_equipo), "audio.wav", '%s_%s_%s_%s.wav' % (self.id_equipo,self.id_ambulancia, date.today(),datetime.now().time()))
+            UploadFTP(self.HostFTP, self.PortFTP, self.UserFTP, self.PassFTP, str(self.serial_equipo), "audio.wav", '%s_%s_%s_%s.wav' % (self.serial_equipo,self.placa_ambulancia, date.today(),datetime.now().time()))
 
         # Inicializacion de los botones en la GUI
         self.buttonStart = QPushButton('Iniciar', self)
@@ -246,8 +246,8 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
         self.variable_function_probe_0 = variable_function_probe_0 = 0
         self.samp_rate = samp_rate = 250e3
         self.Freq = Freq = 88.5e6
-        self.id_equipo = 1
-        self.id_ambulancia = 1
+        self.serial_equipo= "serial1"
+        self.placa_ambulancia = "placa1"
         self.time_rec = 1        
         self.HostFTP = '127.0.0.1'
         self.PortFTP = 21
