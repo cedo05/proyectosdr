@@ -149,33 +149,46 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
 
         # Funcion para iniciar la transmision
         def on_click_start():
+            self.isOn = True
             self.start()
             self.buttonStart.setEnabled(False)
             self.buttonStop.setEnabled(True)
-            self.buttonRecord.setEnabled(False)
-            self.buttonDefault.setEnabled(False)
+            #self.buttonRecord.setEnabled(False)
+            #self.buttonDefault.setEnabled(False)
             insert_onState(self.serial_equipo, date.today(), datetime.now().time())
 
         # Funcion para detener la transmision
         def on_click_stop():
+            self.isOn = False
             self.stop()
             self.wait()
             self.buttonStart.setEnabled(True)
             self.buttonStop.setEnabled(False)
-            self.buttonRecord.setEnabled(True)
-            self.buttonDefault.setEnabled(True)
+            #self.buttonRecord.setEnabled(True)
+            #self.buttonDefault.setEnabled(True)
             insert_offState(self.serial_equipo, date.today(), datetime.now().time())
 
         # Funcion para seleccionar audio base
         def defaultAudio():
+            # Detener el programa
+            if self.isOn:
+                self.stop()
+                self.wait()
             try:
                 shutil.copyfile('base.wav', 'audio.wav')
                 print 'Archivo copiado'
             except IOError as e:
                 print 'No se pudo copiar'
+            # Iniciar de nuevo el programa
+            if self.isOn:
+                self.start()
 
         # Funcion para grabar audio
         def audioRecord():
+            # Detener el programa
+            if self.isOn:
+                self.stop()
+                self.wait()
             chunk = 1024  # Grabar en bloques de 1024 muestras
             sample_format = pyaudio.paInt16  # 16 bits por muestras
             channels = 2
@@ -184,8 +197,8 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             filename = "audio.wav"
 
             p = pyaudio.PyAudio()  # Creacion de interfaz a PortAudio
-
-            print('Recording')
+            
+            os.system("aplay alerta_inicio.wav")
 
             stream = p.open(format=sample_format,
                             channels=channels,
@@ -206,7 +219,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             # Terminar la interfaz de PortAudio
             p.terminate()
 
-            print('Finished recording')
+            os.system("aplay alerta_final.wav")
 
             # Guardar la data como un archivo .wav
             wf = wave.open(filename, 'wb')
@@ -218,6 +231,10 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
 
             # Subir archivo grabado
             UploadFTP(self.HostFTP, self.PortFTP, self.UserFTP, self.PassFTP, str(self.serial_equipo), "audio.wav", '%s_%s_%s_%s.wav' % (self.serial_equipo,self.placa_ambulancia, date.today(),datetime.now().time()))
+
+            # Iniciar de nuevo el programa
+            if self.isOn:
+                self.start()
 
         # Inicializacion de los botones en la GUI
         self.buttonStart = QPushButton('Iniciar', self)
@@ -253,6 +270,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
         self.PortFTP = 21
         self.UserFTP = 'proyectosdr'
         self.PassFTP = 'proyectosdr'
+        self.isOn = False
 
         ##################################################
         # Bloques
