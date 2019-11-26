@@ -20,7 +20,7 @@ if __name__ == '__main__':
             print "Warning: failed to XInitThreads()"
 
 from PyQt5 import Qt, QtCore
-from PyQt5.QtWidgets import QWidget, QPushButton
+from PyQt5.QtWidgets import QWidget, QPushButton, QMessageBox
 from PyQt5.QtGui import QIcon
 from gnuradio import analog
 from gnuradio import blocks
@@ -45,20 +45,101 @@ import wave
 from ftplib import FTP
 import fileinput
 
-# Funcion para insertar tupla al iniciar transmision
-def insert_onState(serial_equipo, fecha_encendido, hora_encendido):
+# Funcion para chequear si el serial esta asignado a una ambulancia
+def select_ambulancia_equipo(serial_equipo):
     try:
         #Abriendo conexion con la base de datos
-        connection = mysql.connector.connect(host='localhost',
+        connection = mysql.connector.connect(host='192.168.10.3',
                              database= 'dbproyectosdr',
-                             user='root',
+                             user='proyecto',
+                             password='password')
+
+        cursor = connection.cursor()
+
+        #Query para obtener el estado del equipo
+        isOk = False
+        cursor.execute("SELECT * FROM ambulancia_equipo WHERE id_equipo = (SELECT id_equipo FROM equipo WHERE numero_serial = '{}')".format(serial_equipo))
+        resultado = cursor.fetchone()
+        if resultado:
+            isOk = True
+    except mysql.connector.Error as error :
+        connection.rollback()
+        print("Error al obtener la informacion: {}".format(error))
+    finally:
+        #Cerrando conexion con la base de datos.
+        if(connection.is_connected()):
+            cursor.close()
+            connection.close()
+            print("Conexion terminada")
+        return isOk
+
+# Funcion para obtener estado del equipo
+def select_estado(serial_equipo):
+    try:
+        #Abriendo conexion con la base de datos
+        connection = mysql.connector.connect(host='192.168.10.3',
+                             database= 'dbproyectosdr',
+                             user='proyecto',
+                             password='password')
+
+        cursor = connection.cursor()
+
+        #Query para obtener el estado del equipo
+        cursor.execute("SELECT estado_equipo FROM equipo WHERE numero_serial = '{}'".format(serial_equipo))
+        resultado = cursor.fetchone()
+        estado = resultado[0]
+        print ("Informacion obtenida con exito")
+    except mysql.connector.Error as error :
+        connection.rollback()
+        print("Error al obtener la informacion: {}".format(error))
+    finally:
+        #Cerrando conexion con la base de datos.
+        if(connection.is_connected()):
+            cursor.close()
+            connection.close()
+            print("Conexion terminada")
+        return estado
+
+# Funcion para obtener placa de la ambulancia ambulancia
+def select_placa(serial_equipo):
+    try:
+        #Abriendo conexion con la base de datos
+        connection = mysql.connector.connect(host='192.168.10.3',
+                             database= 'dbproyectosdr',
+                             user='proyecto',
+                             password='password')
+
+        cursor = connection.cursor()
+
+        #Query para obtener la placa de la ambulancia
+        cursor.execute("SELECT a.placa FROM ambulancia a INNER JOIN ambulancia_equipo ae ON a.id_ambulancia = ae.id_ambulancia WHERE ae.id_equipo = (SELECT e.id_equipo FROM equipo e WHERE e.numero_serial = '{}')".format(serial_equipo))
+        resultado = cursor.fetchone()
+        placa = resultado[0]
+        print ("Informacion obtenida con exito")
+    except mysql.connector.Error as error :
+        connection.rollback()
+        print("Error al obtener la informacion: {}".format(error))
+    finally:
+        #Cerrando conexion con la base de datos.
+        if(connection.is_connected()):
+            cursor.close()
+            connection.close()
+            print("Conexion terminada")
+        return placa
+# Funcion para insertar tupla al iniciar transmision
+def insert_onState(serial_equipo,placa_ambulancia, fecha_encendido, hora_encendido):
+    try:
+        #Abriendo conexion con la base de datos
+        connection = mysql.connector.connect(host='192.168.10.3',
+                             database= 'dbproyectosdr',
+                             user='proyecto',
                              password='password')
         cursor = connection.cursor(prepared=True)
 
         #Query para insertar tupla a tabla estado
         sql_insert_query = """ INSERT INTO `estado`
-                          (`id_equipo`, `fecha_encendido`, `hora_encendido`) VALUES ((SELECT id_equipo FROM equipo WHERE numero_serial = %s),%s,%s)"""
-        insert_tuple = (serial_equipo, fecha_encendido, hora_encendido)
+                          (`id_equipo`, `id_ambulancia`, `fecha_encendido`, `hora_encendido`) VALUES ((SELECT id_equipo FROM equipo WHERE numero_serial = %s),(SELECT id_ambulancia FROM ambulancia WHERE placa = %s),%s,%s)"""
+        insert_tuple = (serial_equipo,placa_ambulancia, fecha_encendido, hora_encendido)
         cursor.execute(sql_insert_query, insert_tuple)
         connection.commit()
         print ("Informacion insertada con exito")
@@ -73,19 +154,19 @@ def insert_onState(serial_equipo, fecha_encendido, hora_encendido):
             print("Conexion terminada")
 
 # Funcion para insertar tupla al terminar transmision
-def insert_offState(serial_equipo, fecha_apagado, hora_apagado):
+def insert_offState(serial_equipo,placa_ambulancia,fecha_apagado, hora_apagado):
     try:
         #Abriendo conexion con la base de datos
-        connection = mysql.connector.connect(host='localhost',
+        connection = mysql.connector.connect(host='192.168.10.3',
                              database= 'dbproyectosdr',
-                             user='root',
+                             user='proyecto',
                              password='password')
         cursor = connection.cursor(prepared=True)
 
         #Query para insertar tupla a tabla estado
         sql_insert_query = """ UPDATE `estado` SET
-                          fecha_apagado = %s, hora_apagado = %s WHERE id_equipo = (SELECT id_equipo FROM equipo WHERE numero_serial = %s) ORDER BY id_estado DESC LIMIT 1"""
-        insert_tuple = (fecha_apagado, hora_apagado, serial_equipo)
+                          fecha_apagado = %s, hora_apagado = %s WHERE id_equipo = (SELECT id_equipo FROM equipo WHERE numero_serial = %s) AND id_ambulancia= (SELECT id_ambulancia FROM ambulancia WHERE placa = %s) ORDER BY id_estado DESC LIMIT 1"""
+        insert_tuple = (fecha_apagado, hora_apagado, serial_equipo,placa_ambulancia)
         cursor.execute(sql_insert_query, insert_tuple)
         connection.commit()
         print ("Informacion insertada con exito")
@@ -100,7 +181,7 @@ def insert_offState(serial_equipo, fecha_apagado, hora_apagado):
             print("Conexion terminada")
 
 # Funcion para subir archivos al servidor FTP
-def UploadFTP(host, port, user, password, foldername, filename, newfilename):
+def UploadFTP(host, port, user, password, foldername, filename):
     #Abriendo conexion con el servidor FTP
     ftp = FTP()
     ftp.connect(host, port)
@@ -115,11 +196,9 @@ def UploadFTP(host, port, user, password, foldername, filename, newfilename):
 
     # Subida de archivo   
     fp = open(filename, 'rb')
-    ftp.storbinary('STOR %s' % os.path.basename(filename), fp)
+    ftp.storbinary('STOR %s' % filename, fp)
     fp.close()
-    
-    # Renombrar archivo
-    ftp.rename(filename, newfilename)
+
     # Finalizar sesion
     ftp.quit()
 
@@ -149,13 +228,21 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
 
         # Funcion para iniciar la transmision
         def on_click_start():
-            self.isOn = True
-            self.start()
-            self.buttonStart.setEnabled(False)
-            self.buttonStop.setEnabled(True)
-            #self.buttonRecord.setEnabled(False)
-            #self.buttonDefault.setEnabled(False)
-            insert_onState(self.serial_equipo, date.today(), datetime.now().time())
+            if select_estado(self.serial_equipo):
+                self.isOn = True
+                self.start()
+                self.buttonStart.setEnabled(False)
+                self.buttonStop.setEnabled(True)
+                if select_ambulancia_equipo(self.serial_equipo):
+                    self.placa_ambulancia = select_placa(self.serial_equipo) 
+                    insert_onState(self.serial_equipo, self.placa_ambulancia, date.today(), datetime.now().time())
+            else:
+                msg = QMessageBox()
+                msg.setText("El equipo se encuentra deshabilitado")
+                msg.setIcon(QMessageBox.Information)
+                msg.setWindowTitle("Informacion")
+                msg.setStyleSheet("QLabel{font: 40pt;}")
+                msg.exec_()
 
         # Funcion para detener la transmision
         def on_click_stop():
@@ -164,9 +251,8 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             self.wait()
             self.buttonStart.setEnabled(True)
             self.buttonStop.setEnabled(False)
-            #self.buttonRecord.setEnabled(True)
-            #self.buttonDefault.setEnabled(True)
-            insert_offState(self.serial_equipo, date.today(), datetime.now().time())
+            if select_ambulancia_equipo(self.serial_equipo):
+                insert_offState(self.serial_equipo, self.placa_ambulancia, date.today(), datetime.now().time())
 
         # Funcion para seleccionar audio base
         def defaultAudio():
@@ -194,7 +280,7 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             channels = 2
             fs = 44100  # Grabar a 44100 muestras por segundo 
             seconds = self.time_rec
-            filename = "audio.wav"
+            filename = "audio2.wav"
 
             p = pyaudio.PyAudio()  # Creacion de interfaz a PortAudio
             
@@ -230,7 +316,11 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
             wf.close()
 
             # Subir archivo grabado
-            UploadFTP(self.HostFTP, self.PortFTP, self.UserFTP, self.PassFTP, str(self.serial_equipo), "audio.wav", '%s_%s_%s_%s.wav' % (self.serial_equipo,self.placa_ambulancia, date.today(),datetime.now().time()))
+            newfilename= '%s_%s_%s.wav' % (self.placa_ambulancia, date.today(), time.strftime("%H-%M-%S"))
+            
+            shutil.copyfile('audio2.wav', newfilename)
+            UploadFTP(self.HostFTP, self.PortFTP, self.UserFTP, self.PassFTP, str(self.serial_equipo), newfilename)
+            os.remove(newfilename)
 
             # Iniciar de nuevo el programa
             if self.isOn:
@@ -238,16 +328,25 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
 
         # Inicializacion de los botones en la GUI
         self.buttonStart = QPushButton('Iniciar', self)
+        self.buttonStart.resize(400,200)
+        self.buttonStart.move(200, 100)
+        self.buttonStart.setStyleSheet('font: 40pt')
         self.buttonStart.clicked.connect(on_click_start)
         self.buttonStop = QPushButton('Detener', self)
-        self.buttonStop.move(100, 0)
+        self.buttonStop.resize(400,200)
+        self.buttonStop.move(650, 100)
         self.buttonStop.setEnabled(False)
+        self.buttonStop.setStyleSheet('font: 40pt')
         self.buttonStop.clicked.connect(on_click_stop)
         self.buttonRecord = QPushButton('Grabar', self)
-        self.buttonRecord.move(0,50)
+        self.buttonRecord.resize(400,200)
+        self.buttonRecord.move(200,350)
+        self.buttonRecord.setStyleSheet('font: 40pt')
         self.buttonRecord.clicked.connect(audioRecord)
         self.buttonDefault = QPushButton('Por Defecto', self)
-        self.buttonDefault.move(100,50)
+        self.buttonDefault.resize(400,200)
+        self.buttonDefault.move(650,350)
+        self.buttonDefault.setStyleSheet('font: 40pt')
         self.buttonDefault.clicked.connect(defaultAudio)
 
         self.settings = Qt.QSettings("GNU Radio", "Transmisor_de_emergencia")
@@ -264,9 +363,9 @@ class Transmisor_de_emergencia(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate = 250e3
         self.Freq = Freq = 88.1e6
         self.serial_equipo= "serial1"
-        self.placa_ambulancia = "placa1"
+        self.placa_ambulancia = select_placa(self.serial_equipo)
         self.time_rec = 1        
-        self.HostFTP = '127.0.0.1'
+        self.HostFTP = '192.168.10.3'
         self.PortFTP = 21
         self.UserFTP = 'proyectosdr'
         self.PassFTP = 'proyectosdr'
